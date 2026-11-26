@@ -1,0 +1,126 @@
+name: Сборка и публикация эксперимента
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      negative_test:
+        description: 'Демонстрация ошибки: добавить битую ссылку перед строгой сборкой'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lab1-${{ github.ref }}-${{ inputs.negative_test || false }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.15.2'
+          cache: pip
+      - run: |
+          python -m pip install -r requirements.txt
+          python -m pip check
+      # В ключе те же входы, что в прикладном кэше. Произвольный restore-key не нужен.
+      - uses: actions/cache@v4
+        with:
+          path: .cache/experiment
+          key: experiment-v1-${{ runner.os }}-cpython-3.15.2-${{ hashFiles('P3/experiment.py', 'P3/data/experiment.csv') }}
+      - name: Вставить битую ссылку для контрольного сбоя
+        if: inputs.negative_test
+        run: printf '\n[Контрольная ошибка](missing-ci-page.md)\n' >> hod-raboty/docs/index.md
+      - name: Собрать и проверить вариант для GitHub Pages
+        env:
+          SITE_URL: https://darckshot.github.io/webpython-lab1/
+        run: make check PYTHON=python
+      - name: Собрать и проверить вариант для Helios
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        env:
+          SITE_URL: https://se.ifmo.ru/~s507315/webpython-lab1/
+        run: make check PYTHON=python SITE_DIR="$RUNNER_TEMP/helios-site"
+      - name: Упаковать сайт для Pages
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - name: Сохранить сборку Helios для доставки
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: helios-site
+          path: ${{ runner.temp }}/helios-site
+          retention-days: 3
+
+  pages:
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && !inputs.negative_test
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Публикация Pages
+        uses: actions/deploy-pages@v4
+        id: deploy
+      - name: Проверить опубликованный коммит и ресурсы
+        env:
+          PUBLISHED_URL: ${{ steps.deploy.outputs.page_url }}
+        run: python3 hod-raboty/scripts/check_site.py --url "$PUBLISHED_URL" --commit "$GITHUB_SHA" --attempts 12
+
+  helios:
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && !inputs.negative_test
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment:
+      name: helios
+      url: https://se.ifmo.ru/~s507315/webpython-lab1/
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: helios-site
+          path: site
+      - name: Загрузить статические файлы на Helios
+        env:
+          HELIOS_KEY: ${{ secrets.HELIOS_KEY }}
+          HELIOS_KNOWN_HOSTS: ${{ secrets.HELIOS_KNOWN_HOSTS }}
+        run: |
+          test -n "$HELIOS_KEY" && test -n "$HELIOS_KNOWN_HOSTS"
+          umask 077
+          ssh_dir="$(mktemp -d)"
+          trap 'rm -rf -- "$ssh_dir"' EXIT
+          printf '%s\n' "$HELIOS_KEY" > "$ssh_dir/deploy_key"
+          printf '%s\n' "$HELIOS_KNOWN_HOSTS" > "$ssh_dir/known_hosts"
+          # rsync обновляет только отдельный каталог лабораторной работы.
+          rsync -az --delay-updates --chmod=D755,F644 \
+            -e "ssh -p 2222 -i $ssh_dir/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$ssh_dir/known_hosts" \
+            site/ s507315@helios.cs.ifmo.ru:public_html/webpython-lab1/
+      - name: Проверить опубликованный коммит и ресурсы
+        run: >-
+          python3 hod-raboty/scripts/check_site.py
+          --url 'https://se.ifmo.ru/~s507315/webpython-lab1/'
+          --commit "$GITHUB_SHA" --attempts 12
