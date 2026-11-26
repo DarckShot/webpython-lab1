@@ -7,7 +7,6 @@ use_directory_urls: true
 theme:
   name: mkdocs
   locale: ru
-  color_mode: auto
   highlightjs: false
 plugins:
   - search:
