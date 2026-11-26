@@ -8,6 +8,7 @@ theme:
   name: mkdocs
   locale: ru
   color_mode: auto
+  highlightjs: false
 plugins:
   - search:
       lang: [ru, en]

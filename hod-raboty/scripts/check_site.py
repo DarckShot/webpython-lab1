@@ -15,10 +15,10 @@ from xml.etree import ElementTree
 
 
 def check(read, expected_commit=None):
-    home = read("index.html").decode()
+    home = read("").decode()
     assert "LAB1-REPRODUCIBLE-EXPERIMENT" in home, "контрольная строка отсутствует"
     assert "<math " in home and "<mfrac>" in home, "формула MathML отсутствует"
-    page = read("results/index.html").decode()
+    page = read("results/").decode()
     metadata = json.loads(read("results/build.json"))
     data = read("results/experiment.csv")
     assert hashlib.sha256(data).hexdigest() == metadata["data_sha256"], "неверный SHA-256"
@@ -39,8 +39,17 @@ def check(read, expected_commit=None):
     print(f"OK: {metadata['dataset_version']} · {metadata['commit']} · {len(table)} размеров · формула и индекс на месте", flush=True)
 
 
+def local_reader(site):
+    def read(name):
+        relative = name + "index.html" if not name or name.endswith("/") else name
+        return (site / relative).read_bytes()
+
+    return read
+
+
 def remote_reader(base, bust):
     prefix = base.rstrip("/") + "/"
+    target = urlsplit(prefix)
     context = ssl.create_default_context(cafile="/etc/ssl/cert.pem" if Path("/etc/ssl/cert.pem").exists() else None)
 
     def read(name):
@@ -50,8 +59,10 @@ def remote_reader(base, bust):
         request = Request(url, headers={"User-Agent": "webpython-lab1-check/1.0", "Cache-Control": "no-cache"})
         with urlopen(request, timeout=12, context=context) as response:
             assert response.status == 200, f"{url}: HTTP {response.status}"
-            assert urlsplit(response.url).path.startswith(urlsplit(prefix).path), f"редирект вне префикса: {response.url}"
-            print(f"HTTP 200 {name}", flush=True)
+            actual = urlsplit(response.url)
+            same_origin = (actual.scheme, actual.netloc) == (target.scheme, target.netloc)
+            assert same_origin and actual.path.startswith(target.path), f"редирект вне сайта: {response.url}"
+            print(f"HTTP 200 {name or '/'}", flush=True)
             return response.read()
     return read
 
@@ -66,7 +77,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     if args.attempts < 1:
         parser.error("--attempts must be at least 1")
-    reader = remote_reader(args.url, args.commit) if args.url else lambda name: (args.site / name).read_bytes()
+    reader = remote_reader(args.url, args.commit) if args.url else local_reader(args.site)
     for attempt in range(args.attempts):
         try:
             check(reader, args.commit)
