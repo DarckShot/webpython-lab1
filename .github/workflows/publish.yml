@@ -104,21 +104,23 @@ jobs:
         with:
           name: helios-site
           path: site
+      # Версия Action закреплена, а ключи берутся из секретов репозитория.
       - name: Загрузить статические файлы на Helios
+        id: upload
+        uses: DarckShot/helios-itmo-deploy@v1.0.0
+        with:
+          host: helios.cs.ifmo.ru
+          port: '2222'
+          user: s507315
+          source: site
+          destination: public_html/webpython-lab1
+          key: ${{ secrets.HELIOS_KEY }}
+          known-hosts: ${{ secrets.HELIOS_KNOWN_HOSTS }}
+          delete: 'false'
+      - name: Проверить выход Action
         env:
-          HELIOS_KEY: ${{ secrets.HELIOS_KEY }}
-          HELIOS_KNOWN_HOSTS: ${{ secrets.HELIOS_KNOWN_HOSTS }}
-        run: |
-          test -n "$HELIOS_KEY" && test -n "$HELIOS_KNOWN_HOSTS"
-          umask 077
-          ssh_dir="$(mktemp -d)"
-          trap 'rm -rf -- "$ssh_dir"' EXIT
-          printf '%s\n' "$HELIOS_KEY" > "$ssh_dir/deploy_key"
-          printf '%s\n' "$HELIOS_KNOWN_HOSTS" > "$ssh_dir/known_hosts"
-          # rsync обновляет только отдельный каталог лабораторной работы.
-          rsync -az --delay-updates --chmod=D755,F644 \
-            -e "ssh -p 2222 -i $ssh_dir/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$ssh_dir/known_hosts" \
-            site/ s507315@helios.cs.ifmo.ru:public_html/webpython-lab1/
+          TARGET: ${{ steps.upload.outputs.destination }}
+        run: test "$TARGET" = 's507315@helios.cs.ifmo.ru:public_html/webpython-lab1/'
       - name: Проверить опубликованный коммит и ресурсы
         run: >-
           python3 hod-raboty/scripts/check_site.py
