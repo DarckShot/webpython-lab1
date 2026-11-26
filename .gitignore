@@ -1,0 +1,13 @@
+/.idea/
+/question.html
+/.bootstrap/
+/.venv/
+/.python/
+/.cache/
+/site/
+/_build/
+/hod-raboty/docs/results/
+/.env*
+__pycache__/
+*.py[cod]
+.DS_Store

@@ -1,0 +1,41 @@
+:root {
+  --lab-accent: #1d638f;
+}
+
+body {
+  font-family: system-ui, sans-serif;
+}
+
+.col-md-9 {
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+
+.col-md-9 h1 {
+  max-width: 21ch;
+  font-size: clamp(2rem, 4vw, 3rem);
+  line-height: 1.15;
+}
+
+.col-md-9 img {
+  display: block;
+  width: 100%;
+  max-width: 48rem;
+  height: auto;
+}
+
+.formula {
+  overflow-x: auto;
+  padding-block: 0.75rem;
+  font-size: 1.2rem;
+}
+
+#health-marker {
+  font-family: ui-monospace, monospace;
+  font-size: 0.8rem;
+}
+
+a:focus-visible {
+  outline: 2px solid var(--lab-accent);
+  outline-offset: 3px;
+}
